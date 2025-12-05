@@ -14,13 +14,20 @@ router.get(
       const params = [];
       const conditions = [];
 
+      if (desde && isNaN(Date.parse(desde))) {
+        return res.status(400).json({ error: 'La fecha "desde" no es válida' });
+      }
+      if (hasta && isNaN(Date.parse(hasta))) {
+        return res.status(400).json({ error: 'La fecha "hasta" no es válida' });
+      }
+
       if (desde) {
         params.push(desde);
-        conditions.push(`v.fecha >= $${params.length}`);
+        conditions.push(`v.fecha >= $${params.length}::date`);
       }
       if (hasta) {
         params.push(hasta);
-        conditions.push(`v.fecha <= $${params.length}::date + interval '1 day'`);
+        conditions.push(`v.fecha < $${params.length}::date + interval '1 day'`);
       }
       if (usuario_id) {
         params.push(usuario_id);
@@ -38,13 +45,15 @@ router.get(
           DATE(v.fecha) as fecha,
           v.forma_pago,
           u.nombre as usuario,
-          COUNT(v.id) as cantidad_ventas,
-          SUM(v.total) as total_ventas
+          COUNT(v.id)::int as cantidad_ventas,
+          -- COALESCE asegura que si es null, devuelva 0. 
+          -- ::float convierte el string de Postgres a número JS.
+          COALESCE(SUM(v.total), 0)::float as total_ventas
         FROM ventas v
         JOIN usuarios u ON u.id = v.usuario_id
         ${where}
         GROUP BY DATE(v.fecha), v.forma_pago, u.nombre
-        ORDER BY DATE(v.fecha) DESC;
+        ORDER BY DATE(v.fecha) DESC, u.nombre ASC;
       `;
 
       const { rows } = await pool.query(query, params);

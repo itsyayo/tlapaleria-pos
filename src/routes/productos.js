@@ -1,8 +1,17 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
+const fs = require('fs');
+const path = require('path');
 const { isAuthenticated, authorizeRoles } = require('../middleware/authMiddleware');
 const upload = require('../middleware/upload');
+
+const borrarImagen = (filePath) => {
+  if (!filePath) return;
+  fs.unlink(filePath, (err) => {
+    if (err) console.error(`Error eliminando imagen huérfana ${filePath}:`, err);
+  });
+};
 
 router.get('/', async (req, res) => {
   try {
@@ -10,20 +19,21 @@ router.get('/', async (req, res) => {
       SELECT p.id, p.codigo, p.descripcion, p.ubicacion, p.stock_maximo, p.cantidad_stock,
              p.precio_compra, p.stock_minimo,
              GREATEST(p.stock_maximo - p.cantidad_stock, 0) AS stock_faltante,
-             p.precio_venta AS precio_venta,
+             p.precio_venta,
              p.codigo_barras,
              pr.nombre AS nombre_proveedor,
              c.nombre AS nombre_categoria,
              p.imagen, p.activo, p.clave_sat
       FROM productos p
-      JOIN proveedores pr ON p.proveedor_id = pr.id
+      LEFT JOIN proveedores pr ON p.proveedor_id = pr.id
       LEFT JOIN categorias c ON p.categoria_id = c.id
       WHERE p.activo = TRUE
       ORDER BY p.descripcion ASC
     `);
     res.json(result.rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener productos' });
   }
 });
 
@@ -34,123 +44,188 @@ router.get('/:id', async (req, res) => {
     if (result.rows.length === 0) return res.status(404).json({ error: 'Producto no encontrado' });
     res.json(result.rows[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener el producto' });
   }
 });
 
 router.post('/', isAuthenticated, authorizeRoles('admin'), upload.single('imagen'), async (req, res) => {
-  const {
-    codigo, descripcion, ubicacion,
-    stock_maximo, cantidad_stock, proveedor_id, categoria_id, codigo_barras,
-    precio_compra, precio_venta, clave_sat, stock_minimo
-  } = req.body;
+  const body = req.body;
+  const codigo = body.codigo?.trim();
+  const descripcion = body.descripcion?.trim();
+  const ubicacion = body.ubicacion?.trim() || '';
+  const codigo_barras = body.codigo_barras?.trim() || null;
+  const clave_sat = body.clave_sat?.trim() || null;
+  
+  // Convertimos a números seguros (fallback a 0 si es inválido)
+  const stock_maximo = Math.trunc(Number(body.stock_maximo) || 0);
+  const stock_minimo = Math.trunc(Number(body.stock_minimo) || 0);
+  const cantidad_stock = Math.trunc(Number(body.cantidad_stock) || 0);
+  const precio_compra = Math.max(0, Number(body.precio_compra) || 0);
+  const precio_venta = Math.max(0, Number(body.precio_venta) || 0);
+  const proveedor_id = body.proveedor_id ? Number(body.proveedor_id) : null;
+  const categoria_id = body.categoria_id ? Number(body.categoria_id) : null;
 
-  if (codigo_barras) {
-    const dup = await pool.query(
-      'SELECT 1 FROM productos WHERE codigo_barras = $1',
-      [codigo_barras]
-    );
-    if (dup.rowCount) return res.status(400).json({ error: 'El código de barras ya existe' });
+  if (!codigo) {
+    if (req.file) borrarImagen(req.file.path);
+    return res.status(400).json({ error: 'El código es obligatorio' });
+  }
+  if (!descripcion) {
+    if (req.file) borrarImagen(req.file.path);
+    return res.status(400).json({ error: 'La descripción es obligatoria' });
   }
 
-  // Normalizadores
-  const toInt = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? Math.trunc(n) : d };
-  const toNum = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d };
-
-  const _stock_maximo = toInt(stock_maximo, 0);
-  const _cantidad_stock = toInt(cantidad_stock, 0);
-  const _precio_compra = toNum(precio_compra, 0);
-  const _precio_venta = toNum(precio_venta, 0);
-  const _stock_minimo = toInt(stock_minimo, 0);
-
-  if (!codigo?.trim()) return res.status(400).json({ error: 'codigo es obligatorio' });
-  if (!descripcion?.trim()) return res.status(400).json({ error: 'descripcion es obligatoria' });
-  if (_precio_venta < 0) return res.status(400).json({ error: 'precio_venta no puede ser negativo' });
-
+  const client = await pool.connect();
   try {
-    const dup = await pool.query('SELECT 1 FROM productos WHERE codigo = $1', [codigo]);
-    if (dup.rows.length) return res.status(409).json({ error: 'El producto ya existe' });
+    await client.query('BEGIN');
 
-    const imagen = req.file ? `/uploads/${req.file.filename}` : null;
-    const result = await pool.query(
-      `INSERT INTO productos
-       (codigo, descripcion, ubicacion, stock_maximo, cantidad_stock,
-        precio_compra, proveedor_id, categoria_id, codigo_barras, imagen, clave_sat, stock_minimo, precio_venta)
+    const dupCodigo = await client.query('SELECT 1 FROM productos WHERE codigo = $1', [codigo]);
+    if (dupCodigo.rowCount > 0) {
+      throw new Error(`El código "${codigo}" ya está en uso.`);
+    }
+
+    if (codigo_barras) {
+      const dupBarras = await client.query('SELECT 1 FROM productos WHERE codigo_barras = $1', [codigo_barras]);
+      if (dupBarras.rowCount > 0) {
+        throw new Error(`El código de barras "${codigo_barras}" ya está en uso.`);
+      }
+    }
+
+    const imagenUrl = req.file ? `/uploads/${req.file.filename}` : null;
+
+    const query = `
+      INSERT INTO productos
+       (codigo, descripcion, ubicacion, stock_maximo, stock_minimo, cantidad_stock,
+        precio_compra, precio_venta, proveedor_id, categoria_id, codigo_barras, clave_sat, imagen)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-       RETURNING *`,
-      [codigo, descripcion, ubicacion, _stock_maximo, _cantidad_stock,
-        _precio_compra, proveedor_id, categoria_id, codigo_barras, imagen, clave_sat, _stock_minimo, _precio_venta]
-    );
+       RETURNING *
+    `;
+    
+    const values = [
+      codigo, descripcion, ubicacion, stock_maximo, stock_minimo, cantidad_stock,
+      precio_compra, precio_venta, proveedor_id, categoria_id, codigo_barras, clave_sat, imagenUrl
+    ];
+
+    const result = await client.query(query, values);
+    
+    await client.query('COMMIT');
     res.status(201).json(result.rows[0]);
+
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    await client.query('ROLLBACK');
+    if (req.file) borrarImagen(req.file.path);
+
+    const msg = err.message || 'Error al guardar el producto';
+    const status = msg.includes('ya está en uso') ? 409 : 500;
+    
+    console.error('Error POST /productos:', err);
+    res.status(status).json({ error: msg });
+  } finally {
+    client.release();
   }
 });
 
 router.put('/:id', isAuthenticated, authorizeRoles('admin'), upload.single('imagen'), async (req, res) => {
   const { id } = req.params;
-  const {
-    codigo, descripcion, ubicacion,
-    stock_maximo, cantidad_stock, proveedor_id, categoria_id, codigo_barras,
-    precio_compra, precio_venta, clave_sat, stock_minimo
-  } = req.body;
+  const body = req.body;
 
-  if (codigo_barras) {
-    const dup = await pool.query(
-      'SELECT 1 FROM productos WHERE codigo_barras = $1 AND id <> $2',
-      [codigo_barras, id]
-    );
-    if (dup.rowCount) return res.status(400).json({ error: 'El código de barras ya existe' });
-  }
+  const codigo = body.codigo?.trim();
+  const descripcion = body.descripcion?.trim();
+  const ubicacion = body.ubicacion?.trim() || '';
+  const codigo_barras = body.codigo_barras?.trim() || null;
+  const clave_sat = body.clave_sat?.trim() || null;
+  
+  const stock_maximo = Math.trunc(Number(body.stock_maximo) || 0);
+  const stock_minimo = Math.trunc(Number(body.stock_minimo) || 0);
+  const cantidad_stock = Math.trunc(Number(body.cantidad_stock) || 0);
+  const precio_compra = Math.max(0, Number(body.precio_compra) || 0);
+  const precio_venta = Math.max(0, Number(body.precio_venta) || 0);
+  const proveedor_id = body.proveedor_id ? Number(body.proveedor_id) : null;
+  const categoria_id = body.categoria_id ? Number(body.categoria_id) : null;
 
-  const toInt = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? Math.trunc(n) : d };
-  const toNum = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d };
-
-  const _stock_maximo = toInt(stock_maximo, 0);
-  const _cantidad_stock = toInt(cantidad_stock, 0);
-  const _precio_compra = toNum(precio_compra, 0);
-  const _precio_venta = toNum(precio_venta, 0);
-  const _stock_minimo = toInt(stock_minimo, 0);
-
-  if (_precio_venta < 0) return res.status(400).json({ error: 'precio_venta no puede ser negativo' });
+  const client = await pool.connect();
 
   try {
-    const check = await pool.query('SELECT id FROM productos WHERE id = $1', [id]);
-    if (!check.rows.length) return res.status(404).json({ error: 'Producto no encontrado' });
+    await client.query('BEGIN');
 
-    const dup = await pool.query('SELECT id FROM productos WHERE codigo = $1 AND id <> $2', [codigo, id]);
-    if (dup.rows.length) return res.status(409).json({ error: 'El código ya está registrado en otro producto' });
+    const check = await client.query('SELECT imagen FROM productos WHERE id = $1', [id]);
+    if (check.rowCount === 0) {
+      if (req.file) borrarImagen(req.file.path);
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Producto no encontrado' });
+    }
+    const imagenAnterior = check.rows[0].imagen;
 
-    const nuevaImagen = req.file ? `/uploads/${req.file.filename}` : null;
-    const result = await pool.query(
-      `UPDATE productos
-       SET codigo=$1, descripcion=$2, ubicacion=$3, stock_maximo=$4, cantidad_stock=$5,
-           proveedor_id=$6, categoria_id=$7, precio_compra=$8, codigo_barras=$9, stock_minimo=$10,
-           imagen = COALESCE($11, imagen),
-           clave_sat = COALESCE($12, clave_sat),
-           precio_venta = COALESCE($13, precio_venta)
-       WHERE id=$14
-       RETURNING *`,
-      [codigo, descripcion, ubicacion, _stock_maximo, _cantidad_stock,
-        proveedor_id, categoria_id, _precio_compra, codigo_barras, _stock_minimo,
-        nuevaImagen, clave_sat, _precio_venta, id]
-    );
+    if (codigo) {
+      const dup = await client.query('SELECT 1 FROM productos WHERE codigo = $1 AND id <> $2', [codigo, id]);
+      if (dup.rowCount > 0) throw new Error(`El código "${codigo}" ya está ocupado por otro producto.`);
+    }
+    if (codigo_barras) {
+      const dup = await client.query('SELECT 1 FROM productos WHERE codigo_barras = $1 AND id <> $2', [codigo_barras, id]);
+      if (dup.rowCount > 0) throw new Error(`El código de barras "${codigo_barras}" ya está ocupado.`);
+    }
+
+    const nuevaImagen = req.file ? `/uploads/${req.file.filename}` : undefined;
+
+    const query = `
+      UPDATE productos
+      SET 
+        codigo = COALESCE($1, codigo),
+        descripcion = COALESCE($2, descripcion),
+        ubicacion = COALESCE($3, ubicacion),
+        stock_maximo = COALESCE($4, stock_maximo),
+        stock_minimo = COALESCE($5, stock_minimo),
+        cantidad_stock = COALESCE($6, cantidad_stock),
+        precio_compra = COALESCE($7, precio_compra),
+        precio_venta = COALESCE($8, precio_venta),
+        proveedor_id = COALESCE($9, proveedor_id),
+        categoria_id = COALESCE($10, categoria_id),
+        codigo_barras = COALESCE($11, codigo_barras),
+        clave_sat = COALESCE($12, clave_sat),
+        imagen = COALESCE($13, imagen)
+      WHERE id = $14
+      RETURNING *
+    `;
+
+    const values = [
+      codigo, descripcion, ubicacion, stock_maximo, stock_minimo, cantidad_stock,
+      precio_compra, precio_venta, proveedor_id, categoria_id, codigo_barras, clave_sat, 
+      nuevaImagen, id
+    ];
+
+    const result = await client.query(query, values);
+
+    await client.query('COMMIT');
     res.json(result.rows[0]);
+
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    await client.query('ROLLBACK');
+    if (req.file) borrarImagen(req.file.path); // GC
+    
+    const msg = err.message || 'Error al actualizar producto';
+    const status = msg.includes('ya está ocupado') ? 409 : 500;
+    
+    console.error('Error PUT /productos:', err);
+    res.status(status).json({ error: msg });
+  } finally {
+    client.release();
   }
 });
 
 router.delete('/:id', isAuthenticated, authorizeRoles('admin'), async (req, res) => {
   const { id } = req.params;
   try {
-    const check = await pool.query('SELECT cantidad_stock FROM productos WHERE id = $1', [id]);
-    if (check.rows.length === 0) return res.status(404).json({ error: 'Producto no encontrado' });
-
-    await pool.query('UPDATE productos SET activo = false WHERE id = $1', [id]);
+    const result = await pool.query(
+      'UPDATE productos SET activo = false WHERE id = $1 RETURNING id', 
+      [id]
+    );
+    
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Producto no encontrado' });
+    
     res.json({ message: 'Producto eliminado correctamente' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Error al eliminar producto' });
   }
 });
 

@@ -5,58 +5,90 @@ const { isAuthenticated, authorizeRoles } = require('../middleware/authMiddlewar
 
 router.post('/entradas', isAuthenticated, authorizeRoles('admin'), async (req, res) => {
   const { entradas } = req.body || {};
+  
   if (!Array.isArray(entradas) || entradas.length === 0) {
-    return res.status(400).json({ error: 'Nada que actualizar' });
+    return res.status(400).json({ error: 'La lista de entradas está vacía o es inválida' });
   }
 
+  const client = await pool.connect();
+
   try {
-    await pool.query('BEGIN');
+    const ids = [];
+    const cantidades = [];
+    const preciosCompra = [];
+    const preciosVenta = [];
 
-    const updated = [];
-
-    for (const { id, cantidad, precio_compra, precio_venta } of entradas) {
-      const cant = Number(cantidad);
-      const pid = Number(id);
-      const precioCompra = precio_compra !== undefined ? Number(precio_compra) : null;
-      const precioVenta = precio_venta !== undefined ? Number(precio_venta) : null;
-
-      if (!Number.isFinite(cant) || cant <= 0 || !Number.isFinite(pid)) {
-        await pool.query('ROLLBACK');
-        return res.status(400).json({ error: 'Datos inválidos en entradas' });
+    for (const item of entradas) {
+      const id = parseInt(item.id);
+      const cantidad = parseInt(item.cantidad);
+      
+      if (!id || !cantidad || cantidad <= 0) {
+        return res.status(400).json({ 
+          error: `Datos inválidos en producto ID ${item.id || '?'}. La cantidad debe ser positiva.` 
+        });
       }
 
-      if (precioCompra !== null && !Number.isFinite(precioCompra)) {
-        await pool.query('ROLLBACK');
-        return res.status(400).json({ error: 'Precio de compra inválido' });
+      let pCompra = null;
+      if (item.precio_compra !== undefined && item.precio_compra !== null) {
+        pCompra = parseFloat(item.precio_compra);
+        if (isNaN(pCompra) || pCompra < 0) return res.status(400).json({ error: `Precio de compra inválido en ID ${id}` });
+        pCompra = pCompra.toFixed(2); // Redondeo
       }
 
-      if (precioVenta !== null && !Number.isFinite(precioVenta)) {
-        await pool.query('ROLLBACK');
-        return res.status(400).json({ error: 'Precio de venta inválido' });
+      let pVenta = null;
+      if (item.precio_venta !== undefined && item.precio_venta !== null) {
+        pVenta = parseFloat(item.precio_venta);
+        if (isNaN(pVenta) || pVenta < 0) return res.status(400).json({ error: `Precio de venta inválido en ID ${id}` });
+        pVenta = pVenta.toFixed(2); // Redondeo
       }
 
-      const r = await pool.query(
-        `UPDATE productos
-           SET cantidad_stock = GREATEST(cantidad_stock + $2, 0),
-               precio_compra = COALESCE($3, precio_compra),
-               precio_venta = COALESCE($4, precio_venta)
-         WHERE id = $1 AND activo = TRUE
-         RETURNING id, descripcion, cantidad_stock, precio_compra, precio_venta`,
-        [pid, cant, precioCompra, precioVenta]
-      );
-
-      if (r.rowCount === 0) {
-        await pool.query('ROLLBACK');
-        return res.status(404).json({ error: `Producto ${pid} no encontrado o inactivo` });
-      }
-      updated.push(r.rows[0]);
+      ids.push(id);
+      cantidades.push(cantidad);
+      preciosCompra.push(pCompra);
+      preciosVenta.push(pVenta);
     }
 
-    await pool.query('COMMIT');
-    res.json({ updated: updated.length, items: updated });
+    await client.query('BEGIN');
+
+    const query = `
+      UPDATE productos p
+      SET 
+        cantidad_stock = p.cantidad_stock + data.cantidad,
+        precio_compra = COALESCE(data.precio_compra, p.precio_compra),
+        precio_venta = COALESCE(data.precio_venta, p.precio_venta)
+      FROM (
+        SELECT 
+          unnest($1::int[]) as id, 
+          unnest($2::int[]) as cantidad, 
+          unnest($3::numeric[]) as precio_compra, 
+          unnest($4::numeric[]) as precio_venta
+      ) as data
+      WHERE p.id = data.id AND p.activo = TRUE
+      RETURNING p.id, p.descripcion, p.cantidad_stock, p.precio_compra, p.precio_venta
+    `;
+
+    const result = await client.query(query, [ids, cantidades, preciosCompra, preciosVenta]);
+
+    if (result.rowCount !== entradas.length) {
+      throw new Error('Uno o más productos no fueron encontrados o están inactivos. Operación cancelada.');
+    }
+
+    await client.query('COMMIT');
+
+    res.json({ 
+      mensaje: 'Inventario actualizado correctamente',
+      total_actualizados: result.rowCount, 
+      items: result.rows 
+    });
+
   } catch (err) {
-    await pool.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    await client.query('ROLLBACK');
+    console.error(err);
+    
+    const statusCode = err.message.includes('Operación cancelada') ? 404 : 500;
+    res.status(statusCode).json({ error: err.message || 'Error interno al actualizar inventario' });
+  } finally {
+    client.release();
   }
 });
 
