@@ -15,11 +15,11 @@ router.post('/login', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM usuarios WHERE usuario = $1', [usuario]);
     const user = result.rows[0];
-    const valid = user 
-      ? await bcrypt.compare(contraseña, user.contraseña) 
+    const valid = user
+      ? await bcrypt.compare(contraseña, user.contraseña)
       : false;
 
-    if (!valid) {return res.status(401).json({ error: 'Credenciales inválidas' });}
+    if (!valid) { return res.status(401).json({ error: 'Credenciales inválidas' }); }
 
     const token = jwt.sign(
       { id: user.id, rol: user.rol },
@@ -37,7 +37,7 @@ router.post('/login', async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Error en POST /login:', err); 
+    console.error('Error en POST /login:', err);
     res.status(500).json({ error: 'Error interno del servidor, intente más tarde' });
   }
 });

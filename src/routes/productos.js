@@ -3,8 +3,8 @@ const router = express.Router();
 const pool = require('../db');
 const fs = require('fs');
 const path = require('path');
-const { isAuthenticated, authorizeRoles } = require('../middleware/authMiddleware');
-const upload = require('../middleware/upload');
+const { isAuthenticated, authorizeRoles } = require('../middleware/authMiddleware.js');
+const upload = require('../middleware/upload.js');
 
 const borrarImagen = (filePath) => {
   if (!filePath) return;
@@ -56,7 +56,7 @@ router.post('/', isAuthenticated, authorizeRoles('admin'), upload.single('imagen
   const ubicacion = body.ubicacion?.trim() || '';
   const codigo_barras = body.codigo_barras?.trim() || null;
   const clave_sat = body.clave_sat?.trim() || null;
-  
+
   // Convertimos a números seguros (fallback a 0 si es inválido)
   const stock_maximo = Math.trunc(Number(body.stock_maximo) || 0);
   const stock_minimo = Math.trunc(Number(body.stock_minimo) || 0);
@@ -100,14 +100,14 @@ router.post('/', isAuthenticated, authorizeRoles('admin'), upload.single('imagen
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        RETURNING *
     `;
-    
+
     const values = [
       codigo, descripcion, ubicacion, stock_maximo, stock_minimo, cantidad_stock,
       precio_compra, precio_venta, proveedor_id, categoria_id, codigo_barras, clave_sat, imagenUrl
     ];
 
     const result = await client.query(query, values);
-    
+
     await client.query('COMMIT');
     res.status(201).json(result.rows[0]);
 
@@ -117,7 +117,7 @@ router.post('/', isAuthenticated, authorizeRoles('admin'), upload.single('imagen
 
     const msg = err.message || 'Error al guardar el producto';
     const status = msg.includes('ya está en uso') ? 409 : 500;
-    
+
     console.error('Error POST /productos:', err);
     res.status(status).json({ error: msg });
   } finally {
@@ -134,7 +134,7 @@ router.put('/:id', isAuthenticated, authorizeRoles('admin'), upload.single('imag
   const ubicacion = body.ubicacion?.trim() || '';
   const codigo_barras = body.codigo_barras?.trim() || null;
   const clave_sat = body.clave_sat?.trim() || null;
-  
+
   const stock_maximo = Math.trunc(Number(body.stock_maximo) || 0);
   const stock_minimo = Math.trunc(Number(body.stock_minimo) || 0);
   const cantidad_stock = Math.trunc(Number(body.cantidad_stock) || 0);
@@ -189,7 +189,7 @@ router.put('/:id', isAuthenticated, authorizeRoles('admin'), upload.single('imag
 
     const values = [
       codigo, descripcion, ubicacion, stock_maximo, stock_minimo, cantidad_stock,
-      precio_compra, precio_venta, proveedor_id, categoria_id, codigo_barras, clave_sat, 
+      precio_compra, precio_venta, proveedor_id, categoria_id, codigo_barras, clave_sat,
       nuevaImagen, id
     ];
 
@@ -201,10 +201,10 @@ router.put('/:id', isAuthenticated, authorizeRoles('admin'), upload.single('imag
   } catch (err) {
     await client.query('ROLLBACK');
     if (req.file) borrarImagen(req.file.path); // GC
-    
+
     const msg = err.message || 'Error al actualizar producto';
     const status = msg.includes('ya está ocupado') ? 409 : 500;
-    
+
     console.error('Error PUT /productos:', err);
     res.status(status).json({ error: msg });
   } finally {
@@ -216,12 +216,12 @@ router.delete('/:id', isAuthenticated, authorizeRoles('admin'), async (req, res)
   const { id } = req.params;
   try {
     const result = await pool.query(
-      'UPDATE productos SET activo = false WHERE id = $1 RETURNING id', 
+      'UPDATE productos SET activo = false WHERE id = $1 RETURNING id',
       [id]
     );
-    
+
     if (result.rowCount === 0) return res.status(404).json({ error: 'Producto no encontrado' });
-    
+
     res.json({ message: 'Producto eliminado correctamente' });
   } catch (err) {
     console.error(err);
