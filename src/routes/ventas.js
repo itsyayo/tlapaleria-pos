@@ -77,10 +77,11 @@ router.post('/', isAuthenticated, authorizeRoles('admin', 'ventas'), async (req,
       
       const cantidadSolicitada = qtyById.get(p.id);
       
+      /*
       if (p.cantidad_stock < cantidadSolicitada) {
         throw new Error(`Stock insuficiente para "${p.descripcion}". Disponible: ${p.cantidad_stock}`);
       }
-
+      */
       const subtotal = p.precio_venta * cantidadSolicitada;
       total += subtotal;
 
