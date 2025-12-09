@@ -10,7 +10,6 @@ router.get('/', isAuthenticated, async (req, res) => {
       FROM ventas v
       JOIN usuarios u ON u.id = v.usuario_id
       ORDER BY v.fecha DESC
-      LIMIT 100
     `);
     res.json(result.rows);
   } catch (err) {
