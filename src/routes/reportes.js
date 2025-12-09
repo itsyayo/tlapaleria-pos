@@ -2,12 +2,11 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db');
 const { isAuthenticated, authorizeRoles } = require('../middleware/authMiddleware');
+const { getDashboardStats } = require('../controllers/reportesController');
 
-router.get(
-  '/corte-caja',
-  isAuthenticated,
-  authorizeRoles('admin'),
-  async (req, res) => {
+router.get('/dashboard', isAuthenticated, authorizeRoles('admin', 'ventas', 'inventario'), getDashboardStats);
+
+router.get('/corte-caja', isAuthenticated, authorizeRoles('admin'), async (req, res) => {
     try {
       const { desde, hasta, usuario_id, forma_pago } = req.query;
 
