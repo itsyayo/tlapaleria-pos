@@ -1,0 +1,5 @@
+ALTER TABLE ventas 
+ADD COLUMN IF NOT EXISTS descuento_total NUMERIC(10, 2) DEFAULT 0.00;
+
+ALTER TABLE detalle_venta
+ADD COLUMN IF NOT EXISTS descuento_aplicado NUMERIC(10, 2) DEFAULT 0.00;
