@@ -141,14 +141,14 @@ router.post('/', isAuthenticated, authorizeRoles('admin', 'ventas'), async (req,
 
     await client.query(
       `INSERT INTO detalle_venta (venta_id, producto_id, cantidad, precio_unitario, descuento_aplicado)
-       SELECT $1, unnest($2::int[]), unnest($3::int[]), unnest($4::numeric[]), unnest($5::numeric[])`,
+       SELECT $1, unnest($2::int[]), unnest($3::numeric[]), unnest($4::numeric[]), unnest($5::numeric[])`,
       [ventaId, dIds, dCants, dPrecios, Array(dIds.length).fill(0)]
     );
 
     await client.query(
       `UPDATE productos p
        SET cantidad_stock = p.cantidad_stock - d.cant
-       FROM (SELECT unnest($1::int[]) as id, unnest($2::int[]) as cant) as d
+       FROM (SELECT unnest($1::int[]) as id, unnest($2::numeric[]) as cant) as d
        WHERE p.id = d.id`,
       [dIds, dCants]
     );
