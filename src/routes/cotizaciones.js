@@ -39,7 +39,7 @@ async function calcularLineasYTotal(client, productosPayload) {
   return { lineas, total };
 }
 
-router.post('/', isAuthenticated, authorizeRoles('ventas', 'admin'), async (req, res) => {
+router.post('/', isAuthenticated, authorizeRoles('ventas', 'admin', 'inventario'), async (req, res) => {
   const { cliente, forma_pago, productos } = req.body;
   const usuarioId = req.user.id;
 
@@ -85,7 +85,7 @@ router.post('/', isAuthenticated, authorizeRoles('ventas', 'admin'), async (req,
   }
 });
 
-router.get('/', isAuthenticated, authorizeRoles('ventas', 'admin'), async (req, res) => {
+router.get('/', isAuthenticated, authorizeRoles('ventas', 'admin', 'inventario'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT c.id, c.fecha, c.cliente, c.forma_pago, c.total, c.estado,
@@ -102,7 +102,7 @@ router.get('/', isAuthenticated, authorizeRoles('ventas', 'admin'), async (req, 
   }
 });
 
-router.get('/:id', isAuthenticated, async (req, res) => {
+router.get('/:id', isAuthenticated, authorizeRoles('ventas', 'admin', 'inventario'), async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: 'ID inválido' });
 
@@ -131,7 +131,7 @@ router.get('/:id', isAuthenticated, async (req, res) => {
   }
 });
 
-router.put('/:id', isAuthenticated, authorizeRoles('ventas', 'admin'), async (req, res) => {
+router.put('/:id', isAuthenticated, authorizeRoles('ventas', 'admin', 'inventario'), async (req, res) => {
   const id = parseInt(req.params.id);
   const { cliente, forma_pago, productos } = req.body;
 
@@ -180,7 +180,7 @@ router.put('/:id', isAuthenticated, authorizeRoles('ventas', 'admin'), async (re
   }
 });
 
-router.delete('/:id', isAuthenticated, authorizeRoles('ventas', 'admin'), async (req, res) => {
+router.delete('/:id', isAuthenticated, authorizeRoles('ventas', 'admin', 'inventario'), async (req, res) => {
   const id = parseInt(req.params.id);
   try {
     const resDel = await pool.query(`DELETE FROM cotizaciones WHERE id = $1`, [id]);
