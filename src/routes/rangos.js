@@ -11,7 +11,7 @@ function buildNumRange(min, max) {
   };
 }
 
-router.get('/', isAuthenticated, authorizeRoles('admin'), async (req, res) => {
+router.get('/', isAuthenticated, authorizeRoles('admin', 'inventario'), async (req, res) => {
   try {
     const { rows } = await pool.query(`
       SELECT id,
