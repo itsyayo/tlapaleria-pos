@@ -6,7 +6,7 @@ const { getDashboardStats } = require('../controllers/reportesController');
 
 router.get('/dashboard', isAuthenticated, authorizeRoles('admin', 'ventas', 'inventario'), getDashboardStats);
 
-router.get('/corte-caja', isAuthenticated, authorizeRoles('admin'), async (req, res) => {
+router.get('/corte-caja', isAuthenticated, authorizeRoles('admin', 'inventario'), async (req, res) => {
     try {
       const { desde, hasta, usuario_id, forma_pago } = req.query;
 
