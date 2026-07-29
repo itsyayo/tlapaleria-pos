@@ -29,7 +29,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-router.post('/', isAuthenticated, authorizeRoles('admin'), async (req, res) => {
+router.post('/', isAuthenticated, authorizeRoles('admin', 'inventario'), async (req, res) => {
   let { nombre } = req.body;
   
   if (!nombre || !nombre.trim()) return res.status(400).json({ error: 'El nombre es requerido' });
@@ -53,7 +53,7 @@ router.post('/', isAuthenticated, authorizeRoles('admin'), async (req, res) => {
   }
 });
 
-router.put('/:id', isAuthenticated, authorizeRoles('admin'), async (req, res) => {
+router.put('/:id', isAuthenticated, authorizeRoles('admin', 'inventario'), async (req, res) => {
   const { id } = req.params;
   let { nombre, activo } = req.body;
 
@@ -86,7 +86,7 @@ router.put('/:id', isAuthenticated, authorizeRoles('admin'), async (req, res) =>
   }
 });
 
-router.delete('/:id', isAuthenticated, authorizeRoles('admin'), async (req, res) => {
+router.delete('/:id', isAuthenticated, authorizeRoles('admin', 'inventario'), async (req, res) => {
   try {    
     const r = await pool.query(
       'UPDATE categorias SET activo = FALSE WHERE id = $1 RETURNING id',

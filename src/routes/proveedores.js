@@ -15,7 +15,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.post('/nuevo', isAuthenticated, authorizeRoles('admin'), async (req, res) => {
+router.post('/nuevo', isAuthenticated, authorizeRoles('admin', 'inventario'), async (req, res) => {
   let { nombre } = req.body;
   
   if (!nombre || !nombre.trim()) {
@@ -45,7 +45,7 @@ router.post('/nuevo', isAuthenticated, authorizeRoles('admin'), async (req, res)
   }
 });
 
-router.delete('/:id', isAuthenticated, authorizeRoles('admin'), async (req, res) => {
+router.delete('/:id', isAuthenticated, authorizeRoles('admin', 'inventario'), async (req, res) => {
   const { id } = req.params;
   try {
     const result = await pool.query(
@@ -64,7 +64,7 @@ router.delete('/:id', isAuthenticated, authorizeRoles('admin'), async (req, res)
   }
 });
 
-router.put('/:id', isAuthenticated, authorizeRoles('admin'), async (req, res) => {
+router.put('/:id', isAuthenticated, authorizeRoles('admin', 'inventario'), async (req, res) => {
   const { id } = req.params;
   let { nombre, email, telefono } = req.body;
 

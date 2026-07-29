@@ -49,7 +49,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-router.post('/', isAuthenticated, authorizeRoles('admin'), upload.single('imagen'), async (req, res) => {
+router.post('/', isAuthenticated, authorizeRoles('admin', 'inventario'), upload.single('imagen'), async (req, res) => {
   const body = req.body;
   const codigo = body.codigo?.trim();
   const descripcion = body.descripcion?.trim();
@@ -125,7 +125,7 @@ router.post('/', isAuthenticated, authorizeRoles('admin'), upload.single('imagen
   }
 });
 
-router.put('/:id', isAuthenticated, authorizeRoles('admin'), upload.single('imagen'), async (req, res) => {
+router.put('/:id', isAuthenticated, authorizeRoles('admin', 'inventario'), upload.single('imagen'), async (req, res) => {
   const { id } = req.params;
   const body = req.body;
 
@@ -212,7 +212,7 @@ router.put('/:id', isAuthenticated, authorizeRoles('admin'), upload.single('imag
   }
 });
 
-router.delete('/:id', isAuthenticated, authorizeRoles('admin'), async (req, res) => {
+router.delete('/:id', isAuthenticated, authorizeRoles('admin', 'inventario'), async (req, res) => {
   const { id } = req.params;
   try {
     const result = await pool.query(
