@@ -38,7 +38,7 @@ router.get('/:id', isAuthenticated, async (req, res) => {
   }
 });
 
-router.post('/', isAuthenticated, authorizeRoles('admin', 'ventas'), async (req, res) => {
+router.post('/', isAuthenticated, authorizeRoles('admin', 'ventas', 'inventario'), async (req, res) => {
   const { forma_pago, productos, cliente_id, descuento_total: descuento = 0, monto_recibido } = req.body;
   const usuarioId = req.user.id;
 
