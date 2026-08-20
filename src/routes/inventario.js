@@ -3,7 +3,7 @@ const router = express.Router();
 const pool = require('../db');
 const { isAuthenticated, authorizeRoles } = require('../middleware/authMiddleware');
 
-router.post('/entradas', isAuthenticated, authorizeRoles('admin'), async (req, res) => {
+router.post('/entradas', isAuthenticated, authorizeRoles('admin', 'inventario'), async (req, res) => {
   const { entradas } = req.body || {};
   
   if (!Array.isArray(entradas) || entradas.length === 0) {
