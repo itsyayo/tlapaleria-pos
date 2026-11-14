@@ -44,7 +44,8 @@ router.post('/', isAuthenticated, authorizeRoles('ventas', 'admin', 'inventario'
     subtotal, 
     descuento_total, 
     total, 
-    productos 
+    productos,
+    notas
   } = req.body;
   
   const usuarioId = req.user.id;
@@ -102,7 +103,7 @@ router.get('/', isAuthenticated, authorizeRoles('ventas', 'admin', 'inventario')
   try {
     const { rows } = await pool.query(
       `SELECT c.id, c.fecha, c.cliente, c.forma_pago, c.subtotal, c.descuento_total, c.total, c.estado,
-              u.nombre AS vendedor
+              u.nombre AS vendedor, c.notas
        FROM cotizaciones c
        LEFT JOIN usuarios u ON u.id = c.usuario_id
        ORDER BY c.fecha DESC
@@ -122,7 +123,7 @@ router.get('/:id', isAuthenticated, authorizeRoles('ventas', 'admin', 'inventari
 
   try {
     const { rows: encabezadoRows } = await pool.query(
-      `SELECT c.id, c.fecha, c.cliente, c.forma_pago, c.subtotal, c.descuento_total, c.total, c.estado, u.nombre AS vendedor
+      `SELECT c.id, c.fecha, c.cliente, c.forma_pago, c.subtotal, c.descuento_total, c.total, c.estado, u.nombre AS vendedor, c.notas
        FROM cotizaciones c
        LEFT JOIN usuarios u ON u.id = c.usuario_id
        WHERE c.id = $1`, [id]
@@ -153,7 +154,7 @@ router.put('/:id', isAuthenticated, authorizeRoles('ventas', 'admin', 'inventari
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: 'ID inválido' });
 
-  const { cliente_nombre, cliente, subtotal, descuento_total, total, productos } = req.body;
+  const { cliente_nombre, cliente, subtotal, descuento_total, total, productos, notas} = req.body;
   const clienteFinal = cliente_nombre || cliente || 'Público General';
 
   if (!Array.isArray(productos) || productos.length === 0) {
